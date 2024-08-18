@@ -1,0 +1,18 @@
+Hi Imanuel,
+
+If you would like some practice, I would recommend having a go at the following tasks. Pick and choose whichever you would like to do:
+
+-Implement an add_relationship() method to the animal class, that takes both the animal and the relationship type and adds this to the vector.
+
+-Implement a get_animals_of_relationship() method that takes a relationship type and returns all the animals of that type of relationship. (might be difficult, let me know if you need help here)
+
+-Implement a describe() method, that simply outputs to the console all the properties and values of the animal object. This is useful for future debugging purposes.
+
+-Create another constructor alongside the default one for easier initialization of the member values.
+
+-Test all the code written, make sure it works correctly.
+
+
+Pairs are easy to construct like vectors, using curly braces and will fit into the correct context where needed, for example as function arguments. Eg:
+
+animalrelationships.push_back({animal, rel_type});
