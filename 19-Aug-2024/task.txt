@@ -1,0 +1,45 @@
+Hi Imanuel,
+
+Have a go at the tasks below.
+
+1. Finish implementing correct constness and consider when and where to pass by reference (you should really do this for all objects and containers). Make sure to continue doing this from now on to develop good habits.
+
+IG : I understand doing const& for getters, but how come setters work with const ???
+   want to understand on, const before and after function.  const void same as void ?
+   also, had few functions that made calculations and yet const worked ??
+
+
+
+
+2. There should be two new publicly accessible methods on Animal. They should be get_weight_type() and get_portion_size(). Animal also needs a new property "weight". get_weight_type() should return to the caller an indicator of whether the animal is underweight, normal, overweight, or obese.
+   Here is the formula for calculating BMI, and the different bmi ranges that dictate the weight type
+   BMI = kg/m2
+   x < 18.5 (underweight)
+   18.5 <= x < 25 (normal)
+   25 <= x < 40 (overweight)
+   x >= 40 (obese)
+   For example, a 80kg animal that is 1.8m tall will be 80/(1.8 * 1.8), which is 24.7, and therefore should return normal when getting its weight type.
+   get_portion_size() should return to the caller a percentage of the meal to feed the animal to control its weight.  This should simply be 100 - bmi.
+
+
+
+
+IG : But we don't have height now.  I added this.
+
+
+
+5. Implement a subclass to Animal called Dog, and use method overriding to reimplement the set_age() method so that the age given is converted and stored as dog years instead. The formula for this is:
+First human year = 12 dog years
+Second human year = 9 dog years
+Subsequent human years = 5 dog years
+So for example, dog.set_age(5) should set the age property of the dog to be 36.
+
+
+
+
+IG : Didn't understand forumula so for now, just multipied by 7 but most importantly did you mean change age from 'private' to 'protected' ? 
+is that ok ? what if someone else wrote the class ? 
+
+
+
+
