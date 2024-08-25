@@ -206,6 +206,10 @@ const void Animal::describe() const
 }
 
 
+bool Animal::operator== (const Animal &other)
+{ 
+    return name == other.name;    
+} 
 
 void Dog::setAge(const int& a)
 {
