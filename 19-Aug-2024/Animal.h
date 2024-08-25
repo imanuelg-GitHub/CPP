@@ -49,7 +49,8 @@ class Animal
         bool hasRelationship(const AnimalRelationship& relationship);
         void get_animals_of_relationship(const AnimalRelationship& relationship_type) const;
         const void describe() const;
-        
+
+        bool operator== (const Animal &other);
 };
 
 
