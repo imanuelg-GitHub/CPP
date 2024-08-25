@@ -81,7 +81,17 @@ int main()
           itr.get_animals_of_relationship(AnimalRelationship::Sibling);
           itr.get_animals_of_relationship(AnimalRelationship::Partner);
   }
+  std::cout << "\n\n\n";
 
+
+  if (puppy == kitten)   // operator overloading ==
+  {
+        std::cout << "Same Animal\n";
+  }
+  else
+  {
+        std::cout << "Not Same Animal\n";
+  }
   
   std::cout << "\n\n\n";
   Dog ddd;
