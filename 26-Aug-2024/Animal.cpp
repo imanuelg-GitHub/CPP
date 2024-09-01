@@ -9,24 +9,23 @@
 const int DOGYEARS = 7;
 
 
-Animal* operator+ ( Animal& parent1, std::shared_ptr<Animal>& parent2) 
+// relationships were added using add_relationshipSP, so using std::shared_ptr<Animal> reference 
+Animal* Animal::operator+ (std::shared_ptr<Animal>& parent2)
 {
-    //std::shared_ptr<Animal> parent2SP {std::make_shared<Animal>(parent2)};  // ignore
-    //if (parent1.hasRelationship (parent2SP, AnimalRelationship::Partner))   // ignore
-    if (parent1.hasRelationship (parent2, AnimalRelationship::Partner))
-    {
-        Animal* pchild = new Animal();
-        pchild->setName("newChild");
-        pchild->setAge(4); 
-        pchild->setWeight(200);
-        pchild->setHeight(3);
-        return pchild;
+    if (this->hasRelationship (parent2, AnimalRelationship::Partner))
+        {
+            Animal* pchild = new Animal();
+            pchild->setName("newChild");
+            pchild->setAge(4); 
+            pchild->setWeight(200);
+            pchild->setHeight(3);
+            return pchild;
 
-    }
-    std::cout << parent1.name << " and " << parent2->name  << " are not partners\n";
-    return NULL;
+        }
+    
+        std::cout << this->name << " and " << parent2->name  << " are not partners\n";
+        return NULL;
 }
-
 
 
 
