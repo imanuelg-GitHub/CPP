@@ -12,8 +12,10 @@ const int DOGYEARS = 7;
 // relationships were added using add_relationshipSP, so using std::shared_ptr<Animal> reference 
 Animal* Animal::operator+ (std::shared_ptr<Animal>& parent2)
 {
+    std::cout << "Are " << this->name << " and " << parent2->name << " partners ?\n";
     if (this->hasRelationship (parent2, AnimalRelationship::Partner))
         {
+            std::cout << "Yes, they are\n";
             Animal* pchild = new Animal();
             pchild->setName("newChild");
             pchild->setAge(4); 
@@ -23,7 +25,7 @@ Animal* Animal::operator+ (std::shared_ptr<Animal>& parent2)
 
         }
     
-        std::cout << this->name << " and " << parent2->name  << " are not partners\n";
+        std::cout << "No, they are not\n";
         return NULL;
 }
 
