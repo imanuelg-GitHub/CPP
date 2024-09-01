@@ -117,7 +117,7 @@ int main()
   pNewDog->setAge(3); // Hiding base class function (sets 5) because calling base class method
                       // overriding calls subclass function using virtual functionality (method resolution)
   std::cout << "\t\t  pNewDog->getAge() = [" << pNewDog->getAge() << "]\n";
-  delete pNewDog;   // TODO : better to delete in dtor ?
+  delete pNewDog;   // TODO : i know program will end, but still, better to delete in dtor ?
 
 
   std::cout << "\n\n\nOperator overloading '+'\n";
@@ -127,7 +127,7 @@ int main()
   {
          pc->describe();
   }
-  delete pc;   // TODO : better to delete in dtor ?
+  delete pc;   // TODO : i know program will end, but still, better to delete in dtor ?
 
 
 }
