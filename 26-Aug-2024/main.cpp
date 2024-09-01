@@ -4,7 +4,7 @@
 #include <vector>
  
 #include "Animal.h"
- 
+  
 int main() 
 {
   std::vector<Animal> AnimalsVec;
