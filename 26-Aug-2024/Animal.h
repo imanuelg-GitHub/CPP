@@ -64,10 +64,7 @@ class Animal
 
 
         bool operator== (const Animal& other);
-       
-        // relationships were added using add_relationshipSP, so the second param is the SP reference 
-        // TODO : still could not get to work without friends  
-        friend Animal* operator+ ( Animal& parent1, std::shared_ptr<Animal>& parent2);        
+        Animal* operator+ (std::shared_ptr<Animal>& parent2);
 };
 
 
