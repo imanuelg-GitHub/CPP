@@ -1,0 +1,137 @@
+#include <iostream>
+#include <string>
+#include <ctime>
+#include <sstream>
+#include <iomanip>
+#include <map>
+#include <vector>
+#include <algorithm>
+
+// Placeholder cryptographic functions
+std::string sha256(const std::string& data) {
+    return "SHA256_HEX_PLACEHOLDER";
+}
+
+std::string hmac_sha256(const std::string& key, const std::string& message) {
+    return "HMAC_SHA256_HEX_PLACEHOLDER";
+}
+
+// Helper to URL-encode a string
+std::string url_encode(const std::string& value) {
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+
+    for (auto c : value) {
+        if (isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+        } else {
+            escaped << '%' << std::setw(2) << int((unsigned char)c);
+        }
+    }
+
+    return escaped.str();
+}
+
+// Get current time in ISO 8601 format
+std::string get_amz_date() {
+    std::time_t t = std::time(nullptr);
+    std::tm tm = *std::gmtime(&t);
+
+    std::ostringstream ss;
+    ss << std::put_time(&tm, "%Y%m%dT%H%M%SZ");
+    return ss.str();
+}
+
+std::string get_date_stamp() {
+    std::time_t t = std::time(nullptr);
+    std::tm tm = *std::gmtime(&t);
+
+    std::ostringstream ss;
+    ss << std::put_time(&tm, "%Y%m%d");
+    return ss.str();
+}
+
+std::string generate_auth_token(
+    const std::string& access_key,
+    const std::string& secret_key,
+    const std::string& region,
+    const std::string& hostname,
+    const std::string& db_user,
+    const std::string& service = "rds",
+    int port = 3306)
+{
+    std::string method = "GET";
+    std::string canonical_uri = "/";
+    std::string algorithm = "AWS4-HMAC-SHA256";
+    std::string amz_date = get_amz_date();
+    std::string date_stamp = get_date_stamp();
+    std::string credential_scope = date_stamp + "/" + region + "/" + service + "/aws4_request";
+
+    std::map<std::string, std::string> query_params = {
+        {"Action", "connect"},
+        {"DBUser", db_user},
+        {"X-Amz-Algorithm", algorithm},
+        {"X-Amz-Credential", url_encode(access_key + "/" + credential_scope)},
+        {"X-Amz-Date", amz_date},
+        {"X-Amz-Expires", "900"},
+        {"X-Amz-SignedHeaders", "host"}
+    };
+
+    // Build canonical query string
+    std::vector<std::string> keys;
+    for (const auto& [k, _] : query_params) keys.push_back(k);
+    std::sort(keys.begin(), keys.end());
+
+    std::ostringstream canonical_query;
+    for (size_t i = 0; i < keys.size(); ++i) {
+        if (i > 0) canonical_query << "&";
+        canonical_query << url_encode(keys[i]) << "=" << url_encode(query_params[keys[i]]);
+    }
+
+    std::string canonical_headers = "host:" + hostname + "\n";
+    std::string signed_headers = "host";
+    std::string payload_hash = sha256(""); // For GET, payload is empty
+
+    std::string canonical_request = method + "\n" +
+                                    canonical_uri + "\n" +
+                                    canonical_query.str() + "\n" +
+                                    canonical_headers + "\n" +
+                                    signed_headers + "\n" +
+                                    payload_hash;
+
+    std::string string_to_sign = algorithm + "\n" +
+                                 amz_date + "\n" +
+                                 credential_scope + "\n" +
+                                 sha256(canonical_request);
+
+    // Derive the signing key (placeholder)
+    std::string kDate = hmac_sha256("AWS4" + secret_key, date_stamp);
+    std::string kRegion = hmac_sha256(kDate, region);
+    std::string kService = hmac_sha256(kRegion, service);
+    std::string kSigning = hmac_sha256(kService, "aws4_request");
+
+    std::string signature = hmac_sha256(kSigning, string_to_sign);
+
+    canonical_query << "&X-Amz-Signature=" << signature;
+
+    std::ostringstream final_url;
+    final_url << "https://" << hostname << ":" << port
+              << "/?" << canonical_query.str();
+
+    return final_url.str();
+}
+
+
+int main() {
+    std::string token = generate_auth_token(
+        "AKIAIOSFODNN7EXAMPLE",
+        "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "us-west-2",
+        "mydb.123456789012.us-west-2.rds.amazonaws.com",
+        "mydbuser"
+    );
+
+    std::cout << "Auth token: " << token << std::endl;
+    return 0;
+}
