@@ -1,0 +1,73 @@
+#include <aws/core/Aws.h>
+#include <aws/core/auth/AWSCredentialsProvider.h>
+#include <aws/core/auth/AWSAuthV4Signer.h>
+#include <aws/core/http/HttpRequest.h>
+#include <aws/core/http/URI.h>
+#include <aws/core/utils/DateTime.h>
+#include <aws/core/utils/memory/stl/AWSStringStream.h>
+#include <iostream>
+
+Aws::String GenerateRDSToken(
+    const Aws::String& accessKey,
+    const Aws::String& secretKey,
+    const Aws::String& sessionToken,  // Optional
+    const Aws::String& region,
+    const Aws::String& hostname,
+    int port,
+    const Aws::String& dbUser
+) {
+    using namespace Aws::Auth;
+    using namespace Aws::Http;
+    using namespace Aws::Utils;
+
+    // Include session token if provided
+    AWSCredentials credentials(accessKey, secretKey, sessionToken);
+
+    AWSAuthV4Signer signer(credentials, "rds", region);
+
+    URI uri;
+    uri.SetScheme("https");
+    uri.SetAuthority(hostname + ":" + std::to_string(port));
+    uri.SetPath("/");
+    uri.AddQueryStringParameter("Action", "connect");
+    uri.AddQueryStringParameter("DBUser", dbUser);
+
+    std::shared_ptr<HttpRequest> request = CreateHttpRequest(
+        uri, HttpMethod::HTTP_GET, Aws::Utils::Stream::DefaultResponseStreamFactoryMethod);
+
+    DateTime now = DateTime::Now();
+    int64_t expiresIn = 900; // 15 minutes
+    signer.PresignRequest(*request, now, expiresIn);
+
+    return request->GetURIString();
+}
+
+int main() {
+    Aws::SDKOptions options;
+    Aws::InitAPI(options);
+    {
+        Aws::String accessKey = "AKIAEXAMPLE";
+        Aws::String secretKey = "SECRETEXAMPLE";
+        Aws::String sessionToken = "SESSIONTOKENEXAMPLE"; // Optional. Use "" if not needed.
+
+        Aws::String region = "us-west-2";
+        Aws::String hostname = "mydb.123456789012.us-west-2.rds.amazonaws.com";
+        int port = 5432;
+        Aws::String dbUser = "myuser";
+
+        Aws::String token = GenerateRDSToken(accessKey, secretKey, sessionToken, region, hostname, port, dbUser);
+        std::cout << "RDS IAM Auth Token:\n" << token << std::endl;
+    }
+    Aws::ShutdownAPI(options);
+    return 0;
+}
+
+
+g++ rds_token.cpp -std=c++11 \
+  -laws-cpp-sdk-core \
+  -laws-cpp-sdk-auth \
+  -laws-cpp-sdk-http \
+  -o rds_token \
+  -I/usr/local/include \
+  -L/usr/local/lib
+Replace include and lib paths as needed for your system.
