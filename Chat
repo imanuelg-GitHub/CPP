@@ -69,7 +69,8 @@ string signKey(const string &secretKey, const string &dateStamp,
 bool loadAWSCredentials(const string &profile,
                         string &accessKey,
                         string &secretKey,
-                        string &sessionToken) {
+                        string &sessionToken,
+                        string &expiration) {
     string homeDir = getenv("HOME") ? getenv("HOME") : ".";
     string path = homeDir + "/.aws/credentials";
 
@@ -100,6 +101,7 @@ bool loadAWSCredentials(const string &profile,
             if (key == "aws_access_key_id") accessKey = value;
             else if (key == "aws_secret_access_key") secretKey = value;
             else if (key == "aws_session_token") sessionToken = value;
+            else if (key == "aws_credential_expiration") expiration = value;
         }
     }
     file.close();
@@ -169,9 +171,9 @@ string generateAuthToken(const string &accessKey,
 }
 
 int main() {
-    string accessKey, secretKey, sessionToken;
+    string accessKey, secretKey, sessionToken, expiration;
     string profile = "default";
-    if (!loadAWSCredentials(profile, accessKey, secretKey, sessionToken)) {
+    if (!loadAWSCredentials(profile, accessKey, secretKey, sessionToken, expiration)) {
         cerr << "Failed to load AWS credentials for profile: " << profile << endl;
         return 1;
     }
@@ -183,5 +185,8 @@ int main() {
 
     string token = generateAuthToken(accessKey, secretKey, region, host, user, port, sessionToken);
     cout << "Generated IAM DB Auth Token:\n" << token << endl;
+    if (!expiration.empty()) {
+        cout << "Credential Expiration: " << expiration << endl;
+    }
     return 0;
 }
