@@ -1,0 +1,187 @@
+#include <iostream>
+#include <sstream>
+#include <fstream>
+#include <iomanip>
+#include <ctime>
+#include <string>
+#include <map>
+#include <vector>
+#include <algorithm>
+#include <openssl/hmac.h>
+#include <openssl/sha.h>
+#include <cstdlib>
+
+using namespace std;
+
+// ---- Helper Functions ----
+string HMAC_SHA256(const string &key, const string &data) {
+    unsigned char* digest;
+    digest = HMAC(EVP_sha256(), key.c_str(), key.length(),
+                  reinterpret_cast<const unsigned char*>(data.c_str()), data.length(), NULL, NULL);
+    return string(reinterpret_cast<char*>(digest), SHA256_DIGEST_LENGTH);
+}
+
+string SHA256Hex(const string &data) {
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(data.c_str()), data.length(), hash);
+
+    stringstream ss;
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i)
+        ss << hex << setw(2) << setfill('0') << (int)hash[i];
+    return ss.str();
+}
+
+string uriEncode(const string &input, bool encodeSlash = true) {
+    ostringstream oss;
+    for (size_t i = 0; i < input.size(); ++i) {
+        unsigned char c = input[i];
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            oss << c;
+        } else if (c == '/' && !encodeSlash) {
+            oss << c;
+        } else {
+            oss << '%' << uppercase << hex << setw(2) << setfill('0') << (int)c << nouppercase;
+        }
+    }
+    return oss.str();
+}
+
+string getCurrentTimestamp(string &dateStamp) {
+    time_t now = time(NULL);
+    struct tm gmt;
+    gmtime_r(&now, &gmt);
+    char date[9], timestamp[17];
+    strftime(date, sizeof(date), "%Y%m%d", &gmt);
+    strftime(timestamp, sizeof(timestamp), "%Y%m%dT%H%M%SZ", &gmt);
+    dateStamp = date;
+    return timestamp;
+}
+
+string signKey(const string &secretKey, const string &dateStamp,
+               const string &region, const string &service) {
+    string kDate = HMAC_SHA256("AWS4" + secretKey, dateStamp);
+    string kRegion = HMAC_SHA256(kDate, region);
+    string kService = HMAC_SHA256(kRegion, service);
+    string kSigning = HMAC_SHA256(kService, "aws4_request");
+    return kSigning;
+}
+
+bool loadAWSCredentials(const string &profile,
+                        string &accessKey,
+                        string &secretKey,
+                        string &sessionToken) {
+    string homeDir = getenv("HOME") ? getenv("HOME") : ".";
+    string path = homeDir + "/.aws/credentials";
+
+    ifstream file(path.c_str());
+    if (!file.is_open()) {
+        cerr << "Cannot open credentials file: " << path << endl;
+        return false;
+    }
+
+    string line, currentProfile;
+    while (getline(file, line)) {
+        line.erase(0, line.find_first_not_of(" \t\r\n"));
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        if (line.empty() || line[0] == '#') continue;
+        if (line[0] == '[' && line[line.size() - 1] == ']') {
+            currentProfile = line.substr(1, line.size() - 2);
+            continue;
+        }
+        if (currentProfile == profile) {
+            size_t pos = line.find('=');
+            if (pos == string::npos) continue;
+            string key = line.substr(0, pos);
+            string value = line.substr(pos + 1);
+            key.erase(0, key.find_first_not_of(" \t"));
+            key.erase(key.find_last_not_of(" \t") + 1);
+            value.erase(0, value.find_first_not_of(" \t"));
+            value.erase(value.find_last_not_of(" \t") + 1);
+            if (key == "aws_access_key_id") accessKey = value;
+            else if (key == "aws_secret_access_key") secretKey = value;
+            else if (key == "aws_session_token") sessionToken = value;
+        }
+    }
+    file.close();
+    return !accessKey.empty() && !secretKey.empty();
+}
+
+string generateAuthToken(const string &accessKey,
+                         const string &secretKey,
+                         const string &region,
+                         const string &host,
+                         const string &user,
+                         int port,
+                         const string &sessionToken = "") {
+    string method = "GET";
+    string service = "rds-db";
+    string uri = "/";
+    string dateStamp, amzDate = getCurrentTimestamp(dateStamp);
+
+    map<string, string> queryParams;
+    queryParams["Action"] = "connect";
+    queryParams["DBUser"] = user;
+    queryParams["X-Amz-Algorithm"] = "AWS4-HMAC-SHA256";
+    queryParams["X-Amz-Credential"] = accessKey + "/" + dateStamp + "/" + region + "/" + service + "/aws4_request";
+    queryParams["X-Amz-Date"] = amzDate;
+    queryParams["X-Amz-Expires"] = "900";
+    if (!sessionToken.empty()) queryParams["X-Amz-Security-Token"] = sessionToken;
+
+    map<string, string> headers;
+    headers["host"] = host;
+    headers["x-amz-date"] = amzDate;
+    if (!sessionToken.empty()) headers["x-amz-security-token"] = sessionToken;
+
+    stringstream canonicalHeadersStream, signedHeadersStream;
+    for (map<string, string>::iterator it = headers.begin(); it != headers.end(); ++it) {
+        canonicalHeadersStream << it->first << ":" << it->second << "\n";
+        signedHeadersStream << it->first << ";";
+    }
+    string canonicalHeaders = canonicalHeadersStream.str();
+    string signedHeaders = signedHeadersStream.str();
+    signedHeaders.pop_back();
+
+    vector< pair<string, string> > sortedParams(queryParams.begin(), queryParams.end());
+    sort(sortedParams.begin(), sortedParams.end());
+    string canonicalQueryString;
+    for (size_t i = 0; i < sortedParams.size(); ++i) {
+        canonicalQueryString += uriEncode(sortedParams[i].first) + "=" + uriEncode(sortedParams[i].second);
+        if (i < sortedParams.size() - 1) canonicalQueryString += "&";
+    }
+
+    string payloadHash = SHA256Hex("");
+    string canonicalRequest = method + "\n" + uri + "\n" + canonicalQueryString + "\n" +
+                              canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash;
+
+    string algorithm = "AWS4-HMAC-SHA256";
+    string credentialScope = dateStamp + "/" + region + "/" + service + "/aws4_request";
+    string stringToSign = algorithm + "\n" + amzDate + "\n" + credentialScope + "\n" + SHA256Hex(canonicalRequest);
+
+    string signingKey = signKey(secretKey, dateStamp, region, service);
+    string signature = SHA256Hex(HMAC_SHA256(signingKey, stringToSign));
+
+    canonicalQueryString += "&X-Amz-SignedHeaders=" + uriEncode(signedHeaders);
+    canonicalQueryString += "&X-Amz-Signature=" + signature;
+
+    ostringstream finalToken;
+    finalToken << host << ":" << port << "/?" << canonicalQueryString;
+    return finalToken.str();
+}
+
+int main() {
+    string accessKey, secretKey, sessionToken;
+    string profile = "default";
+    if (!loadAWSCredentials(profile, accessKey, secretKey, sessionToken)) {
+        cerr << "Failed to load AWS credentials for profile: " << profile << endl;
+        return 1;
+    }
+
+    string region = "us-east-1";
+    string host = "your-db-instance.us-east-1.rds.amazonaws.com";
+    string user = "dbuser";
+    int port = 5432;
+
+    string token = generateAuthToken(accessKey, secretKey, region, host, user, port, sessionToken);
+    cout << "Generated IAM DB Auth Token:\n" << token << endl;
+    return 0;
+}
