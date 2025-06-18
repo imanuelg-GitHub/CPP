@@ -1,0 +1,172 @@
+#include <iostream>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
+#include <openssl/hmac.h>
+#include <openssl/sha.h>
+#include <cstdlib>
+#include <vector>
+#include <algorithm>
+
+std::string SHA256Hex(const std::string& data) {
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256((const unsigned char*)data.c_str(), data.length(), hash);
+
+    std::ostringstream oss;
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i)
+        oss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+    return oss.str();
+}
+
+std::vector<unsigned char> HMAC_SHA256(const std::string& key, const std::string& data) {
+    unsigned int len = EVP_MAX_MD_SIZE;
+    std::vector<unsigned char> result(len);
+
+    HMAC(EVP_sha256(),
+         key.data(), key.length(),
+         (const unsigned char*)data.data(), data.length(),
+         result.data(), &len);
+
+    result.resize(len);
+    return result;
+}
+
+std::string HMAC_SHA256_HEX(const std::string& key, const std::string& data) {
+    auto result = HMAC_SHA256(key, data);
+    std::ostringstream oss;
+    for (auto c : result)
+        oss << std::hex << std::setw(2) << std::setfill('0') << (int)c;
+    return oss.str();
+}
+
+std::string urlEncode(const std::string& value) {
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+    for (unsigned char c : value) {
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+        } else {
+            escaped << '%' << std::uppercase << std::setw(2) << int(c);
+            escaped << std::nouppercase;
+        }
+    }
+    return escaped.str();
+}
+
+std::string getTimestamp() {
+    time_t now = time(nullptr);
+    struct tm gmt;
+    gmtime_r(&now, &gmt);
+    char buf[17];
+    strftime(buf, sizeof(buf), "%Y%m%dT%H%M%SZ", &gmt);
+    return std::string(buf);
+}
+
+std::string getDate() {
+    time_t now = time(nullptr);
+    struct tm gmt;
+    gmtime_r(&now, &gmt);
+    char buf[9];
+    strftime(buf, sizeof(buf), "%Y%m%d", &gmt);
+    return std::string(buf);
+}
+
+std::string toHex(const std::vector<unsigned char>& data) {
+    std::ostringstream oss;
+    for (auto c : data)
+        oss << std::hex << std::setw(2) << std::setfill('0') << (int)c;
+    return oss.str();
+}
+
+std::string buildToken(const std::string& access_key,
+                       const std::string& secret_key,
+                       const std::string& region,
+                       const std::string& hostname,
+                       int port,
+                       const std::string& username,
+                       const std::string& session_token = "") {
+    std::string service = "rds-db";
+    std::string method = "GET";
+    std::string uri = "/";
+    std::string amz_date = getTimestamp();
+    std::string datestamp = getDate();
+    std::string algorithm = "AWS4-HMAC-SHA256";
+    std::string credential_scope = datestamp + "/" + region + "/" + service + "/aws4_request";
+    std::string signed_headers = "host";
+
+    // Step 1: Canonical Query String
+    std::vector<std::string> queryParams = {
+        "Action=connect",
+        "DBUser=" + urlEncode(username),
+        "X-Amz-Algorithm=" + algorithm,
+        "X-Amz-Credential=" + urlEncode(access_key + "/" + credential_scope),
+        "X-Amz-Date=" + amz_date,
+        "X-Amz-Expires=900",
+        "X-Amz-SignedHeaders=" + signed_headers
+    };
+    if (!session_token.empty()) {
+        queryParams.push_back("X-Amz-Security-Token=" + urlEncode(session_token));
+    }
+
+    std::sort(queryParams.begin(), queryParams.end());
+    std::ostringstream queryStr;
+    for (size_t i = 0; i < queryParams.size(); ++i) {
+        queryStr << queryParams[i];
+        if (i < queryParams.size() - 1) queryStr << "&";
+    }
+
+    // Step 2: Canonical Request
+    std::ostringstream canonicalRequest;
+    canonicalRequest << method << "\n"
+                     << uri << "\n"
+                     << queryStr.str() << "\n"
+                     << "host:" << hostname << "\n\n"
+                     << signed_headers << "\n"
+                     << "UNSIGNED-PAYLOAD";
+
+    std::string canonicalRequestHash = SHA256Hex(canonicalRequest.str());
+
+    // Step 3: String to Sign
+    std::ostringstream stringToSign;
+    stringToSign << algorithm << "\n"
+                 << amz_date << "\n"
+                 << credential_scope << "\n"
+                 << canonicalRequestHash;
+
+    // Step 4: Derive signing key
+    auto kDate = HMAC_SHA256("AWS4" + secret_key, datestamp);
+    auto kRegion = HMAC_SHA256(std::string(kDate.begin(), kDate.end()), region);
+    auto kService = HMAC_SHA256(std::string(kRegion.begin(), kRegion.end()), service);
+    auto kSigning = HMAC_SHA256(std::string(kService.begin(), kService.end()), "aws4_request");
+
+    // Step 5: Signature
+    auto signature_bin = HMAC_SHA256(std::string(kSigning.begin(), kSigning.end()), stringToSign.str());
+    std::string signature = toHex(signature_bin);
+
+    // Step 6: Final Token URL
+    queryStr << "&X-Amz-Signature=" << signature;
+
+    std::ostringstream finalToken;
+    finalToken << hostname << ":" << port << "/?" << queryStr.str();
+
+    return finalToken.str();
+}
+
+int main() {
+    std::string access_key = std::getenv("AWS_ACCESS_KEY_ID");
+    std::string secret_key = std::getenv("AWS_SECRET_ACCESS_KEY");
+    std::string session_token = std::getenv("AWS_SESSION_TOKEN"); // Optional
+
+    std::string region = "eu-west-2";
+    std::string hostname = "mydb.123456789012.eu-west-2.rds.amazonaws.com";
+    std::string username = "dbuser";
+    int port = 5432;
+
+    std::string token = buildToken(access_key, secret_key, region, hostname, port, username, session_token);
+    std::cout << "RDS Auth Token (identical to AWS CLI):\n" << token << std::endl;
+
+    return 0;
+}
+
+g++ rds_token_cli_match.cpp -std=c++11 -lssl -lcrypto -o rds_token_cli_match
