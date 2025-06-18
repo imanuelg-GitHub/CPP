@@ -1,0 +1,55 @@
+import os
+import sys
+from urllib.parse import urlencode
+from botocore.auth import SigV4QueryAuth
+from botocore.awsrequest import AWSRequest
+from botocore.credentials import Credentials, ReadOnlyCredentials
+from botocore.session import Session
+from datetime import datetime
+
+def generate_rds_auth_token(host, port, region, username,
+                             access_key, secret_key, session_token=None):
+    service = 'rds-db'
+    method = 'GET'
+    protocol = 'https'
+    path = '/'
+    query_params = {
+        'Action': 'connect',
+        'DBUser': username
+    }
+
+    endpoint = f"{host}:{port}"
+
+    # Create request
+    request = AWSRequest(method=method,
+                         url=f"{protocol}://{endpoint}{path}",
+                         data=None,
+                         params=query_params)
+
+    # Build credentials
+    creds = Credentials(access_key, secret_key, session_token)
+    frozen_creds = creds.get_frozen_credentials()
+
+    # Sign request
+    SigV4QueryAuth(frozen_creds, service, region).add_auth(request)
+
+    return request.url
+
+if __name__ == "__main__":
+    # Set values manually or get from environment
+    host = os.environ.get("RDS_HOST") or "mydb.123456789012.us-west-2.rds.amazonaws.com"
+    port = int(os.environ.get("RDS_PORT", 5432))
+    region = os.environ.get("AWS_REGION") or "us-west-2"
+    username = os.environ.get("RDS_USER") or "dbuser"
+
+    access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+    secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    session_token = os.environ.get("AWS_SESSION_TOKEN")  # Optional
+
+    if not all([access_key, secret_key]):
+        print("Missing AWS credentials. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.")
+        sys.exit(1)
+
+    token = generate_rds_auth_token(host, port, region, username,
+                                    access_key, secret_key, session_token)
+    print(token)
