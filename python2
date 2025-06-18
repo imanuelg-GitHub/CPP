@@ -1,0 +1,50 @@
+import botocore.session
+from botocore.auth import SigV4QueryAuth
+from botocore.awsrequest import AWSRequest
+import sys
+import os
+
+def generate_db_auth_token(hostname, port, region, username):
+    session = botocore.session.get_session()
+
+    credentials = session.get_credentials()
+    frozen_credentials = credentials.get_frozen_credentials()
+
+    service = "rds-db"
+    endpoint = f"https://{hostname}:{port}/"
+    method = "GET"
+
+    # Construct the URL with query params
+    request = AWSRequest(
+        method=method,
+        url=endpoint,
+        params={
+            "Action": "connect",
+            "DBUser": username,
+        },
+        headers={"host": hostname}
+    )
+
+    SigV4QueryAuth(
+        credentials=frozen_credentials,
+        service_name=service,
+        region_name=region,
+        expires=900
+    ).add_auth(request)
+
+    # Final presigned URL
+    return f"{hostname}:{port}{request.url.split(hostname)[1]}"
+
+if __name__ == "__main__":
+    # Example usage
+    hostname = os.environ.get("DB_HOST")       # e.g. mydb.xxxx.eu-west-2.rds.amazonaws.com
+    port = int(os.environ.get("DB_PORT", 5432))
+    region = os.environ.get("AWS_REGION", "eu-west-2")
+    username = os.environ.get("DB_USER")       # e.g. mydbuser
+
+    if not all([hostname, username]):
+        print("Set DB_HOST and DB_USER environment variables.", file=sys.stderr)
+        sys.exit(1)
+
+    token = generate_db_auth_token(hostname, port, region, username)
+    print(token)
