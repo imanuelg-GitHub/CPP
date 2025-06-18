@@ -1,0 +1,70 @@
+#include <aws/core/Aws.h>
+#include <aws/core/utils/DateTime.h>
+#include <aws/core/http/HttpRequest.h>
+#include <aws/core/http/URI.h>
+#include <aws/core/auth/AWSCredentialsProvider.h>
+#include <aws/core/auth/signer/AWSAuthV4Signer.h>  // Corrected include
+#include <iostream>
+
+using namespace Aws;
+using namespace Aws::Auth;
+using namespace Aws::Http;
+using namespace Aws::Utils;
+
+std::string GenerateAuthToken(
+    const Aws::String& region,
+    const Aws::String& hostname,
+    const Aws::String& username,
+    int port)
+{
+    // Construct the endpoint URI: hostname:port
+    Aws::StringStream endpointStream;
+    endpointStream << hostname << ":" << port;
+    URI uri("https://" + endpointStream.str());
+
+    // Add query string parameters
+    uri.AddQueryStringParameter("Action", "connect");
+    uri.AddQueryStringParameter("DBUser", username);
+
+    // Create an HTTP GET request with the URI
+    std::shared_ptr<HttpRequest> request =
+        CreateHttpRequest(uri, HttpMethod::HTTP_GET,
+                          Aws::Utils::Stream::DefaultResponseStreamFactoryMethod);
+
+    // Set the "host" header
+    request->SetHeaderValue("host", uri.GetAuthority());
+
+    // Get AWS credentials from default chain
+    DefaultAWSCredentialsProviderChain credsProvider;
+    auto credentials = credsProvider.GetAWSCredentials();
+
+    // Create V4 signer for service "rds-db"
+    AWSAuthV4Signer signer(
+        std::make_shared<DefaultAWSCredentialsProviderChain>(),
+        "rds-db",
+        region
+    );
+
+    // Sign the request
+    signer.SignRequest(*request);
+
+    // Return the full signed URL (the auth token)
+    return request->GetURIString();
+}
+
+int main()
+{
+    Aws::SDKOptions options;
+    Aws::InitAPI(options);
+    {
+        Aws::String region = "eu-west-2";
+        Aws::String hostname = "mydb.123.eu-west-2.rds.amazonaws.com";
+        Aws::String username = "amig";
+        int port = 3306;  // Or your RDS port (e.g., 5432 for PostgreSQL)
+
+        std::string authToken = GenerateAuthToken(region, hostname, username, port);
+        std::cout << "Generated Auth Token:\n" << authToken << std::endl;
+    }
+    Aws::ShutdownAPI(options);
+    return 0;
+}
