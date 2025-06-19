@@ -1,0 +1,36 @@
+#include <aws/core/Aws.h>
+#include <aws/core/auth/AWSCredentials.h>
+#include <aws/core/client/ClientConfiguration.h>
+#include <aws/rds/RDSClient.h>
+#include <iostream>
+
+int main() {
+    Aws::SDKOptions options;
+    Aws::InitAPI(options);
+    {
+        // ----------- Input: Customize These -----------
+        Aws::String access_key = "AKIAEXAMPLE123456";
+        Aws::String secret_key = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY";
+        Aws::String session_token = "IQoJb3JpZ2luX2VjEOrEXAMPLETOKEN...";  // Optional
+        Aws::String region = "us-west-2";
+        Aws::String hostname = "mydb.abc123.us-west-2.rds.amazonaws.com";
+        int port = 5432;
+        Aws::String username = "iamuser";
+        // ----------------------------------------------
+
+        // Use explicit credentials
+        Aws::Auth::AWSCredentials credentials(access_key, secret_key, session_token);
+        Aws::Client::ClientConfiguration config;
+        config.region = region;
+
+        // Create RDS client
+        Aws::RDS::RDSClient rds_client(credentials, config);
+
+        // Generate RDS IAM token
+        Aws::String token = rds_client.GenerateConnectAuthToken(hostname, region, port, username);
+
+        std::cout << "Generated RDS IAM Auth Token:\n" << token << std::endl;
+    }
+    Aws::ShutdownAPI(options);
+    return 0;
+}
