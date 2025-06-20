@@ -1,5 +1,3 @@
-// Updated: Canonical, byte-accurate SigV4 token generator for RDS IAM (matches AWS CLI)
-
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 #include <ctime>
@@ -20,11 +18,12 @@ std::string hexify(const unsigned char* data, size_t len) {
     return ss.str();
 }
 
-std::string hmac_sha256_raw(const std::string& key, const std::string& msg) {
-    unsigned int len = SHA256_DIGEST_LENGTH;
-    unsigned char hash[len];
+std::string hmac_sha256_raw(const std::string& key, const std::string& msg, unsigned int* out_len = nullptr) {
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int len = 0;
     HMAC(EVP_sha256(), key.data(), key.size(),
          reinterpret_cast<const unsigned char*>(msg.data()), msg.size(), hash, &len);
+    if (out_len) *out_len = len;
     return std::string(reinterpret_cast<char*>(hash), len);
 }
 
@@ -108,18 +107,26 @@ std::string generate_rds_auth_token(const std::string& hostname, int port,
                       << "host:" << hostname << "\n\n"
                       << "host\nUNSIGNED-PAYLOAD";
 
-    std::string canonical_request_hash = sha256_hex(canonical_request.str());
+    std::string canonical_request_str = canonical_request.str();
+    std::string canonical_request_hash = sha256_hex(canonical_request_str);
 
     std::ostringstream sts;
     sts << "AWS4-HMAC-SHA256\n" << amzdate_str << "\n"
         << credential_scope << "\n" << canonical_request_hash;
 
-    std::string kDate = hmac_sha256_raw("AWS4" + secret_key, datestamp);
-    std::string kRegion = hmac_sha256_raw(kDate, region);
-    std::string kService = hmac_sha256_raw(kRegion, "rds-db");
-    std::string kSigning = hmac_sha256_raw(kService, "aws4_request");
-    std::string signature = hexify(reinterpret_cast<const unsigned char*>(
-        hmac_sha256_raw(kSigning, sts.str()).data()), SHA256_DIGEST_LENGTH);
+    std::string string_to_sign = sts.str();
+
+    unsigned int sig_len = 0;
+    std::string kDate = hmac_sha256_raw("AWS4" + secret_key, datestamp, &sig_len);
+    std::string kRegion = hmac_sha256_raw(kDate, region, &sig_len);
+    std::string kService = hmac_sha256_raw(kRegion, "rds-db", &sig_len);
+    std::string kSigning = hmac_sha256_raw(kService, "aws4_request", &sig_len);
+    std::string final_sig = hmac_sha256_raw(kSigning, string_to_sign, &sig_len);
+    std::string signature = hexify(reinterpret_cast<const unsigned char*>(final_sig.data()), sig_len);
+
+    std::cout << "\n--- CanonicalRequest ---\n" << canonical_request_str << "\n";
+    std::cout << "\n--- StringToSign ---\n" << string_to_sign << "\n";
+    std::cout << "\n--- Signature ---\n" << signature << "\n";
 
     return hostname + ":" + std::to_string(port) + "/?" + canonical_query + "&X-Amz-Signature=" + signature;
 }
